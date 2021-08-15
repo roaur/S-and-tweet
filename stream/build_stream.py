@@ -2,9 +2,37 @@ import requests
 import os
 import json
 import logging
+import time
+from pykafka import KafkaClient
+# from . import kafka_producer
 
 
 bearer_token = os.environ.get("BEARER_TOKEN")
+
+logging.basicConfig(filename='example.log', filemode='w', level=logging.DEBUG)
+
+client = KafkaClient(hosts='localhost:9092')
+topic = client.topics['tweets']
+producer = topic.get_sync_producer()
+
+def send_message_to_kafka(producer, message):
+    """
+    :param producer: pykafka producer
+    :param key: key to decide partition
+    :param message: json serializable object to send
+    :return:
+    """
+
+    #data = json.dumps(message)
+    try:
+        start = time.time()
+        producer.produce(message)
+        logging.info(u'Time take to push to Kafka: {}'.format(time.time() - start))
+    except Exception as e:
+        logging.exception(e)
+        pass # for at least once delivery you will need to catch network errors and retry.
+
+
 
 def bearer_oauth(r):
     """
@@ -66,6 +94,8 @@ def set_rules(delete):
         {"value": "TSLA"},
         {"value": "MSFT"}, 
         {"value": "GOOG"}, 
+        #{"value": "AAPL"}, 
+        #{"value": "AMZN"}, 
     ]
     payload = {"add": rules}
     response = requests.post(
@@ -90,7 +120,7 @@ def get_stream(set):
         "https://api.twitter.com/2/tweets/search/stream", auth=bearer_oauth, stream=True,
     )
     logging.info(f'get_stream response: {response.status_code}')
-    
+
     if response.status_code != 200:
         err = "Cannot get stream (HTTP {}): {}".format(
                 response.status_code, response.text
@@ -100,8 +130,8 @@ def get_stream(set):
 
     for response_line in response.iter_lines():
         if response_line:
-            json_response = json.loads(response_line)
-            return json_response
+            #json_response = json.loads(response_line)
+            send_message_to_kafka(producer, response_line)
             #print(json.dumps(json_response, indent=4, sort_keys=True))
 
 
