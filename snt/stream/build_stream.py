@@ -2,9 +2,7 @@ import requests
 import os
 import json
 import logging
-import time
 from pykafka import KafkaClient
-# from . import kafka_producer
 
 
 bearer_token = os.environ.get("BEARER_TOKEN")
@@ -14,24 +12,6 @@ logging.basicConfig(filename='example.log', filemode='w', level=logging.DEBUG)
 client = KafkaClient(hosts='localhost:9092')
 topic = client.topics['tweets']
 producer = topic.get_sync_producer()
-
-def send_message_to_kafka(producer, message):
-    """
-    :param producer: pykafka producer
-    :param key: key to decide partition
-    :param message: json serializable object to send
-    :return:
-    """
-
-    #data = json.dumps(message)
-    try:
-        start = time.time()
-        producer.produce(message)
-        logging.info(u'Time take to push to Kafka: {}'.format(time.time() - start))
-    except Exception as e:
-        logging.exception(e)
-        pass # for at least once delivery you will need to catch network errors and retry.
-
 
 
 def bearer_oauth(r):
@@ -94,6 +74,8 @@ def set_rules(delete):
         {"value": "TSLA"},
         {"value": "MSFT"}, 
         {"value": "GOOG"}, 
+        #{"value": "BTC"}, 
+        #{"value": "#ElectionsCanada"}, 
         #{"value": "AAPL"}, 
         #{"value": "AMZN"}, 
     ]
@@ -111,6 +93,7 @@ def set_rules(delete):
             err
         )
     logging.info('done setting rules')
+    #return response.json()
     #print(json.dumps(response.json(), indent=4, sort_keys=True))
 
 
@@ -131,9 +114,8 @@ def get_stream(set):
     for response_line in response.iter_lines():
         if response_line:
             #json_response = json.loads(response_line)
-            send_message_to_kafka(producer, response_line)
+            kafka_producer.send_message_to_kafka(producer, response_line)
             #print(json.dumps(json_response, indent=4, sort_keys=True))
-
 
 def main():
     rules = get_rules()

@@ -2,14 +2,13 @@ import json
 import logging
 import time
 from pykafka import KafkaClient
-from . import build_stream
 
 # Set up logging
 
 
-client = KafkaClient(use_greenlets=True)
-topic = client.topics['tweets']
-producer = topic.get_sync_producer()
+# client = KafkaClient(use_greenlets=True)
+# topic = client.topics['tweets']
+# producer = topic.get_sync_producer()
 
 def send_message_to_kafka(producer, message):
     """
