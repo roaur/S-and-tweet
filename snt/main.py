@@ -4,6 +4,11 @@ import json
 import logging
 import time
 from kafka import KafkaProducer
+import psycopg2
+from datetime import datetime
+from psycopg2.extras import Json
+from psycopg2.sql import SQL, Literal, Identifier
+
 
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -108,8 +113,8 @@ def set_rules(delete):
     logging.info('starting set_rules()')
     rules = [
         {"value": "TSLA"},
-        #{"value": "MSFT"}, 
-        #{"value": "GOOG"}, 
+        {"value": "MSFT"}, 
+        {"value": "GOOG"}, 
         #{"value": "GME"},
         #{"value": "BTC"}, 
         #{"value": "#ElectionsCanada"}, 
@@ -123,6 +128,65 @@ def set_rules(delete):
         json=payload,
     )
     logging.info(f'set rules: {json.dumps(response.json())}')
+
+    j = response.json()
+
+# Example response
+#
+# {
+#   "data": [
+#     {
+#       "value": "TSLA",
+#       "id": "1429130887095017481"
+#     },
+#     {
+#       "value": "GOOG",
+#       "id": "1429130887095017480"
+#     },
+#     {
+#       "value": "MSFT",
+#       "id": "1429130887095017482"
+#     }
+#   ],
+#   "meta": {
+#     "sent": "2021-08-20T20:21:29.534Z",
+#     "summary": {
+#       "created": 3,
+#       "not_created": 0,
+#       "valid": 3,
+#       "invalid": 0
+#     }
+#   }
+# }
+    senttime = datetime.strptime(j['meta']['sent'], '%Y-%m-%dT%H:%M:%S.%fZ')
+    summary_created = j['meta']['summary']['created']
+    summary_not_created = j['meta']['summary']['not_created']
+    summary_valid = j['meta']['summary']['valid']
+    summary_invalid = j['meta']['summary']['invalid']
+
+    try:
+        with psycopg2.connect("host=100.100.100.42 dbname=datascience user=roman") as pg_con:
+            with pg_con.cursor() as cursor:
+                for rule in j['data']:
+                    match_value = rule['value']
+                    match_id = rule['id']
+
+                    sql = """
+                        insert into snt.rules 
+                        (match_id, match_value, sent_time, summary_created, summary_not_created, summary_valid, summary_invalid) 
+                        values 
+                        (%s, %s, %s, %s, %s, %s, %s);
+                        """
+
+                    cursor.execute(
+                            sql,
+                            (match_id, match_value, str(senttime), summary_created, summary_not_created, summary_valid, summary_invalid)
+                        )
+                    pg_con.commit()
+    except Exception as e:
+        logging.error(e)
+        raise e
+
     if response.status_code != 201:
         err = "Cannot add rules (HTTP {}): {}".format(response.status_code, response.text)
         logging.error(err)
@@ -130,8 +194,6 @@ def set_rules(delete):
             err
         )
     logging.info('done setting rules')
-    #return response.json()
-    #print(json.dumps(response.json(), indent=4, sort_keys=True))
 
 
 def get_stream(set):
