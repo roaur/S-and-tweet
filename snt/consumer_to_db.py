@@ -19,5 +19,7 @@ with pg_con.cursor() as cursor:
         time = datetime.fromtimestamp(message.timestamp/1000)
         message = json.loads(message.value)
 
-        cursor.execute(f"insert into snt.raw_msg (data, msg_time) values ({Json(message)}, '{time}')")
+        sql = 'insert into snt.raw_msg (data, msg_time) values (%s, %s)'
+
+        cursor.execute(sql, (Json(message), str(time)))
         pg_con.commit()
