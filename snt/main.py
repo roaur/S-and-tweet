@@ -2,19 +2,29 @@ import requests
 import os
 import json
 import logging
+from logging.handlers import TimedRotatingFileHandler 
 import time
 from kafka import KafkaProducer
 import psycopg2
 from datetime import datetime
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Literal, Identifier
-
-
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+# Daily rotating logs
+formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+
+handler = TimedRotatingFileHandler('snt.log', 
+                                   when='midnight',
+                                   backupCount=10)
+handler.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
 bearer_token = os.environ.get("BEARER_TOKEN")
-logging.basicConfig(filename='example.log', filemode='w', level=logging.DEBUG)
+
 http = requests.Session()
 
 # We want to account for timeouts. The Twitter API says there should be 20s
@@ -66,28 +76,28 @@ def bearer_oauth(r):
 
 
 def get_rules():
-    logging.info('starting get_rules()')
+    logger.info('starting get_rules()')
     response = http.get(
         "https://api.twitter.com/2/tweets/search/stream/rules", auth=bearer_oauth
     )
     if response.status_code != 200:
         err = "Cannot get rules (HTTP {}): {}".format(response.status_code, response.text)
-        logging.error(err)
+        logger.error(err)
         raise Exception(
             err
         )
     rule_response = response.json()
-    logging.info('done get_rules()')
-    logging.info(f'got rules: {rule_response}')
+    logger.info('done get_rules()')
+    logger.info(f'got rules: {rule_response}')
     return rule_response
 
 
 def delete_all_rules(rules):
-    logging.info('starting delete_all_rules()')
+    logger.info('starting delete_all_rules()')
     
     if rules is None or "data" not in rules:
         return None
-        logging.info('no existing rules found')
+        logger.info('no existing rules found')
 
     ids = list(map(lambda rule: rule["id"], rules["data"]))
     payload = {"delete": {"ids": ids}}
@@ -100,17 +110,17 @@ def delete_all_rules(rules):
         err =  "Cannot delete rules (HTTP {}): {}".format(
                 response.status_code, response.text
             )
-        logging.error(err)
+        logger.error(err)
         raise Exception(
             err
         )
-    logging.info('done delete_all_rules()')
+    logger.info('done delete_all_rules()')
     #print(json.dumps(response.json()))
 
 
 def set_rules(delete):
     # You can adjust the rules if needed
-    logging.info('starting set_rules()')
+    logger.info('starting set_rules()')
     rules = [
         {"value": "TSLA"},
         {"value": "MSFT"}, 
@@ -127,7 +137,7 @@ def set_rules(delete):
         auth=bearer_oauth,
         json=payload,
     )
-    logging.info(f'set rules: {json.dumps(response.json())}')
+    logger.info(f'set rules: {json.dumps(response.json())}')
 
     j = response.json()
 
@@ -184,30 +194,30 @@ def set_rules(delete):
                         )
                     pg_con.commit()
     except Exception as e:
-        logging.error(e)
+        logger.error(e)
         raise e
 
     if response.status_code != 201:
         err = "Cannot add rules (HTTP {}): {}".format(response.status_code, response.text)
-        logging.error(err)
+        logger.error(err)
         raise Exception(
             err
         )
-    logging.info('done setting rules')
+    logger.info('done setting rules')
 
 
 def get_stream(set):
-    logging.info('starting get_stream()')
+    logger.info('starting get_stream()')
     response = http.get(
         "https://api.twitter.com/2/tweets/search/stream", auth=bearer_oauth, stream=True,
     )
-    logging.info(f'get_stream response: {response.status_code}')
+    logger.info(f'get_stream response: {response.status_code}')
 
     if response.status_code != 200:
         err = "Cannot get stream (HTTP {}): {}".format(
                 response.status_code, response.text
         )
-        logging.error(err)
+        logger.error(err)
         raise Exception(err)
 
     for response_line in response.iter_lines():
