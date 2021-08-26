@@ -6,7 +6,9 @@ from logging.handlers import TimedRotatingFileHandler
 import time
 from kafka import KafkaProducer
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone
+import datetime
+import pytz
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Literal, Identifier
 from requests.adapters import HTTPAdapter
@@ -19,7 +21,8 @@ handler = TimedRotatingFileHandler('snt.log',
                                    when='midnight',
                                    backupCount=10)
 handler.setFormatter(formatter)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('snt_logger')
+#logger = logging.getLogger(__name__)
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
@@ -123,8 +126,8 @@ def set_rules(delete):
     logger.info('starting set_rules()')
     rules = [
         {"value": "TSLA"},
-        {"value": "MSFT"}, 
-        {"value": "GOOG"}, 
+        #{"value": "MSFT"}, 
+        #{"value": "GOOG"}, 
         #{"value": "GME"},
         #{"value": "BTC"}, 
         #{"value": "#ElectionsCanada"}, 
@@ -139,7 +142,8 @@ def set_rules(delete):
     )
     logger.info(f'set rules: {json.dumps(response.json())}')
 
-    j = response.json()
+    try:
+        j = response.json()
 
 # Example response
 #
@@ -168,13 +172,12 @@ def set_rules(delete):
 #     }
 #   }
 # }
-    senttime = datetime.strptime(j['meta']['sent'], '%Y-%m-%dT%H:%M:%S.%fZ')
-    summary_created = j['meta']['summary']['created']
-    summary_not_created = j['meta']['summary']['not_created']
-    summary_valid = j['meta']['summary']['valid']
-    summary_invalid = j['meta']['summary']['invalid']
+        senttime = datetime.datetime.strptime(j['meta']['sent'], '%Y-%m-%dT%H:%M:%S.%fZ')
+        summary_created = j['meta']['summary']['created']
+        summary_not_created = j['meta']['summary']['not_created']
+        summary_valid = j['meta']['summary']['valid']
+        summary_invalid = j['meta']['summary']['invalid']
 
-    try:
         with psycopg2.connect("host=100.100.100.42 dbname=datascience user=roman") as pg_con:
             with pg_con.cursor() as cursor:
                 for rule in j['data']:
@@ -220,15 +223,28 @@ def get_stream(set):
         logger.error(err)
         raise Exception(err)
 
+
+    local_timezone = pytz.timezone('America/Edmonton')
+    utc_timezone = pytz.timezone("UTC")
+
     for response_line in response.iter_lines():
-        if response_line:
-            producer.send('tweets', response_line, timestamp_ms=int(time.time()*1000))
+        try:
+            if response_line:
+                producer.send(
+                    'tweets', 
+                    response_line, 
+                    timestamp_ms=int(datetime.datetime.utcnow().timestamp() * 1000)
+                    )
+        except Exception as e:
+            logger.error(e)
+            raise e
 
 def main():
     rules = get_rules()
     delete = delete_all_rules(rules)
     set = set_rules(delete)
     get_stream(set)
+
 
 
 if __name__ == "__main__":
